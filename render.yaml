@@ -1,0 +1,142 @@
+services:
+  - type: web
+    name: filereader-backend
+    env: node
+    plan: pro # For 1M users support
+    rootDir: backend
+    buildCommand: npm install --production
+    startCommand: node server-production.js
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: CLUSTER_MODE
+        value: true
+      - key: WEB_CONCURRENCY
+        value: 4
+      - key: MAX_CONNECTIONS_PER_WORKER
+        value: 1000
+      - key: MONGODB_URI
+        fromDatabase:
+          name: filereader-mongodb
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: filereader-redis
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: AWS_ACCESS_KEY_ID
+        sync: false # Set manually in dashboard
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false # Set manually in dashboard
+      - key: AWS_REGION
+        value: us-east-1
+      - key: AWS_S3_BUCKET
+        value: filereader-production-bucket
+      - key: CONVERTAPI_SECRET
+        sync: false # Set manually in dashboard
+      - key: HUGGINGFACE_API_KEY
+        sync: false # Set manually in dashboard
+      - key: SENTRY_DSN
+        sync: false # Set manually in dashboard
+      - key: EMAIL_HOST
+        value: smtp.sendgrid.net
+      - key: EMAIL_PORT
+        value: 587
+      - key: EMAIL_USER
+        sync: false # Set manually in dashboard
+      - key: EMAIL_PASS
+        sync: false # Set manually in dashboard
+      - key: FRONTEND_URL
+        fromService:
+          type: web
+          name: filereader-frontend
+          property: host
+      - key: RATE_LIMIT_WINDOW_MS
+        value: 300000
+      - key: RATE_LIMIT_MAX_REQUESTS
+        value: 1000
+      - key: MAX_FILE_SIZE
+        value: 1073741824
+      - key: DEMO_MODE
+        value: false
+      - key: CLOUD_STORAGE_ENABLED
+        value: true
+      - key: FILE_PROCESSING_QUEUE_ENABLED
+        value: true
+    scaling:
+      minInstances: 2
+      maxInstances: 10
+      targetCPUPercent: 70
+      targetMemoryPercent: 80
+
+  - type: web
+    name: filereader-frontend
+    env: static
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: build
+    pullRequestPreviewsEnabled: false
+    envVars:
+      - key: REACT_APP_API_URL
+        fromService:
+          type: web
+          name: filereader-backend
+          property: host
+          envVarKey: REACT_APP_API_URL
+      - key: REACT_APP_SOCKET_URL
+        fromService:
+          type: web
+          name: filereader-backend
+          property: host
+      - key: REACT_APP_WEBVIEWER_PATH
+        value: /webviewer/lib
+      - key: REACT_APP_ENABLE_OCR
+        value: true
+      - key: REACT_APP_ENABLE_COLLABORATION
+        value: true
+      - key: REACT_APP_ENABLE_AI_FEATURES
+        value: true
+      - key: REACT_APP_ENABLE_CONVERSION
+        value: true
+      - key: REACT_APP_MAX_FILE_SIZE
+        value: 1073741824
+      - key: REACT_APP_CHUNK_SIZE
+        value: 5242880
+      - key: REACT_APP_THEME
+        value: light
+      - key: REACT_APP_ENABLE_DARK_MODE
+        value: true
+      - key: REACT_APP_DEMO_MODE
+        value: false
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+      - path: /*
+        name: Permissions-Policy
+        value: camera=(), microphone=(), geolocation=()
+    routes:
+      - type: rewrite
+        source: /api/*
+        destination: https://filereader-backend.onrender.com$1
+
+databases:
+  - name: filereader-mongodb
+    databaseName: filereader
+    user: filereader_user
+    plan: pro # For production workload
+
+  - name: filereader-redis
+    plan: pro # For session management and queues
+    maxmemoryPolicy: allkeys-lru
